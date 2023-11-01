@@ -1,0 +1,172 @@
+---
+title: "Divvy Bike Case Study"
+author: "Andrew Sundberg"
+date: "2023-11-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Cyclistic Exercise 1st Quarter of 2020 Analysis 
+
+###### This analysis is for case study 1 from the Google Data Analytics Certificate (Cyclistic).  It’s originally based on the case study "'Sophisticated, Clear, and Polished’: Divvy and Data Visualization" written by Kevin Hartman (found here: https://artscience.blog/home/divvy-dataviz-case-study). We will be using the Divvy dataset for the case study. The purpose of this script is to consolidate downloaded Divvy data into a single dataframe and then conduct simple analysis to help answer the key question: “In what ways do members and casual riders use Divvy bikes differently?”
+
+
+### Install required packages
+
+
+```{r}
+library(tidyverse)  #helps wrangle data
+library(lubridate)  #helps wrangle date attributes
+library(ggplot2)  #helps visualize data
+getwd() #displays your working directory
+setwd("C:/Users/ajsun/OneDrive/Documents/Divvy_Trips_2020_Q1")
+```
+
+```{r}
+q1_2020 <- read_csv("Divvy_Trips_2020_Q1.csv")
+colnames(q1_2020)
+
+str(q1_2020)
+```
+
+
+```{r}
+colnames(q1_2020)  #List of column names
+nrow(q1_2020)  #How many rows are in data frame?
+dim(q1_2020)  #Dimensions of the data frame?
+head(q1_2020)  #See the first 6 rows of data frame.  Also tail(qs_raw)
+str(q1_2020)  #See list of columns and data types (numeric, character, etc)
+summary(q1_2020)  #Statistical summary of data. Mainly for numerics
+```
+
+
+```{r}
+table(q1_2020$member_casual)
+
+# Reassign to the desired values (we will go with the current 2020 labels)
+q1_2020 <-  q1_2020 %>% 
+  mutate(member_casual = recode(member_casual
+                                ,"Subscriber" = "member"
+                                ,"Customer" = "casual"))
+```
+
+
+## Checking to make sure the proper number of observations were reassigned
+
+```{r}
+table(q1_2020$member_casual)
+```
+
+
+## Adding columns to list the date, day, month, and year of each ride
+
+```{r}
+q1_2020$date <- as.Date(q1_2020$started_at) #The default format is yyyy-mm-dd
+q1_2020$month <- format(as.Date(q1_2020$date), "%m")
+q1_2020$day <- format(as.Date(q1_2020$date), "%d")
+q1_2020$year <- format(as.Date(q1_2020$date), "%Y")
+q1_2020$day_of_week <- format(as.Date(q1_2020$date), "%A")
+```
+
+
+## Adding a "ride_length" calculation to the dataset (in seconds)
+
+```{r}
+q1_2020$ride_length <- difftime(q1_2020$ended_at,q1_2020$started_at)
+```
+
+
+## Convert "ride_length" from Factor to numeric so we can run calculations on the data
+
+```{r}
+is.factor(q1_2020$ride_length)
+q1_2020$ride_length <- as.numeric(as.character(q1_2020$ride_length))
+is.numeric(q1_2020$ride_length)
+```
+
+
+## The dataframe includes a few hundred entries when bikes were taken out of docks and checked for quality by Divvy or ride_length was negative
+#### We will create a new version of the dataframe (v2) since data is being removed
+
+```{r}
+q1_2020_v2 <- q1_2020[!(q1_2020$start_station_name == "HQ QR" | q1_2020$ride_length<0),]
+```
+
+
+# Descriptive Analysis
+## All figures in Seconds
+
+```{r}
+mean(q1_2020_v2$ride_length) #straight average (total ride length / rides)
+median(q1_2020_v2$ride_length) #midpoint number in the ascending array of ride lengths
+max(q1_2020_v2$ride_length) #longest ride
+min(q1_2020_v2$ride_length) #shortest ride
+```
+
+
+## Comparing the numbers between members and casual users
+
+```{r}
+aggregate(q1_2020_v2$ride_length ~ q1_2020_v2$member_casual, FUN = mean)
+aggregate(q1_2020_v2$ride_length ~ q1_2020_v2$member_casual, FUN = median)
+aggregate(q1_2020_v2$ride_length ~ q1_2020_v2$member_casual, FUN = max)
+aggregate(q1_2020_v2$ride_length ~ q1_2020_v2$member_casual, FUN = min)
+```
+
+
+## Make sure the days of the week are in order
+
+```{r}
+q1_2020_v2$day_of_week <- ordered(q1_2020_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+```
+
+
+## Average ride time by each day for members vs casual users
+
+```{r}
+aggregate(q1_2020_v2$ride_length ~ q1_2020_v2$member_casual + q1_2020_v2$day_of_week, FUN = mean)
+```
+
+
+## Analyze ridership data by type and weekday
+
+```{r}
+q1_2020_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%  #creates weekday field using wday()
+  group_by(member_casual, weekday) %>%  #groups by usertype and weekday
+  summarise(number_of_rides = n()							#calculates the number of rides and average duration 
+            ,average_duration = mean(ride_length)) %>% 		# calculates the average duration
+  arrange(member_casual, weekday)								# sorts
+```
+
+
+## Visualize the amount of rides by rider type
+
+```{r}
+q1_2020_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
+
+## Visualize for the average duration by rider type for each day of the week
+
+```{r}
+q1_2020_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
